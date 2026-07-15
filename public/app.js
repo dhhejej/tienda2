@@ -754,6 +754,27 @@ function checkAuthStatus() {
   }
 }
 
+// Auto-login del administrador si usa la URL secreta
+async function autoLoginAdmin() {
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@tecnonova.com', password: 'adminpassword123' })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('isAdmin', 'true');
+      checkAuthStatus();
+      showToast('Acceso directo del Administrador autorizado.');
+    }
+  } catch (e) {
+    console.error('Error en autoLoginAdmin:', e);
+  }
+}
+
 // Admin Access Checker (Acceso oculto por parámetro de URL)
 function checkAdminAccess() {
   const params = new URLSearchParams(window.location.search);
@@ -763,6 +784,7 @@ function checkAdminAccess() {
     localStorage.setItem('isAdmin', 'true');
     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
     window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+    autoLoginAdmin();
   } else if (adminParam === 'logout') {
     localStorage.removeItem('isAdmin');
     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
@@ -802,6 +824,11 @@ async function handleLoginSubmit(e) {
 
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
+    if (data.user.role === 'admin') {
+      localStorage.setItem('isAdmin', 'true');
+    } else {
+      localStorage.removeItem('isAdmin');
+    }
     
     showToast(`¡Bienvenido, ${data.user.name}!`);
     checkAuthStatus();

@@ -914,8 +914,6 @@ footer {
 /* Responsiveness */
 @media(max-width: 640px) {
   .header-container {
-
-
     flex-direction: column;
     gap: 1rem;
   }
@@ -927,4 +925,9 @@ footer {
   .section-header h2 {
     font-size: 2rem;
   }
+}
+
+/* Fix CSS grid children squeeze when table overflows */
+.admin-grid > div {
+  min-width: 0;
 }
