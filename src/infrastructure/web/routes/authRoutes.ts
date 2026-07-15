@@ -15,6 +15,10 @@ export function createAuthRouter(userRepository: UserRepository): Router {
 
   // 1. Registro de Usuario
   router.post('/register', async (req: Request, res: Response) => {
+    if (process.env.DISABLE_REGISTRATION !== 'false') {
+      return res.status(503).json({ error: 'El registro de nuevos usuarios está deshabilitado temporalmente.' });
+    }
+
     try {
       const { email, password, name } = req.body;
       if (!email || !password || !name) {
