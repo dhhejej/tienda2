@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import Stripe from 'stripe';
 import { ProductRepository } from '../../../domain/repositories/ProductRepository';
 import { OrderRepository } from '../../../domain/repositories/OrderRepository';
 import { Order } from '../../../domain/entities/Order';
+import { authMiddleware, AuthenticatedRequest } from '../middleware/authMiddleware';
 
 const stripe = new Stripe((process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_key_to_prevent_crash').trim());
 
@@ -13,7 +14,7 @@ export function createPaymentRouter(
   const router = Router();
 
   // 1. Crear sesión de Checkout
-  router.post('/create-checkout-session', async (req, res) => {
+  router.post('/create-checkout-session', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { items } = req.body; // Array de { productId, quantity }
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -58,7 +59,8 @@ export function createPaymentRouter(
         success_url: `${req.headers.origin}/success.html?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${req.headers.origin}/cancel.html`,
         metadata: {
-          items: JSON.stringify(validatedItems)
+          items: JSON.stringify(validatedItems),
+          userId: req.user?.id || ''
         }
       });
 
@@ -122,13 +124,17 @@ export function createPaymentRouter(
           await productRepository.save(product);
         }
 
+        // Obtener el userId de los metadatos de la sesión
+        const userId = session.metadata?.userId || null;
+
         // Crear la orden de compra
         const newOrder = new Order(
           `order-${Date.now()}`,
           orderItems,
           total,
           'PAID',
-          new Date()
+          new Date(),
+          userId
         );
 
         await orderRepository.save(newOrder);

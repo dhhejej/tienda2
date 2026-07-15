@@ -15,7 +15,10 @@ export class ManageOrders {
     private productRepository: ProductRepository
   ) {}
 
-  public async getOrders(): Promise<Order[]> {
+  public async getOrders(userId?: string): Promise<Order[]> {
+    if (userId) {
+      return this.orderRepository.findByUserId(userId);
+    }
     return this.orderRepository.findAll();
   }
 
@@ -23,7 +26,7 @@ export class ManageOrders {
     return this.orderRepository.findById(id);
   }
 
-  public async createOrder(orderId: string, input: CreateOrderInput): Promise<Order> {
+  public async createOrder(orderId: string, input: CreateOrderInput, userId?: string): Promise<Order> {
     const orderItems: OrderItem[] = [];
 
     for (const itemInput of input.items) {
@@ -47,7 +50,7 @@ export class ManageOrders {
       });
     }
 
-    const order = Order.create(orderId, orderItems);
+    const order = Order.create(orderId, orderItems, userId);
     await this.orderRepository.save(order);
     return order;
   }

@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 
 const pool = mysql.createPool({
   host: (process.env.DB_HOST || 'localhost').trim(),
@@ -44,6 +45,16 @@ export async function initDatabase(): Promise<void> {
 
   // Create tables in MySQL if they do not exist
   await queryRun(`
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(50) PRIMARY KEY,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      role VARCHAR(50) NOT NULL DEFAULT 'customer'
+    )
+  `);
+
+  await queryRun(`
     CREATE TABLE IF NOT EXISTS products (
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -61,6 +72,20 @@ export async function initDatabase(): Promise<void> {
       created_at VARCHAR(50) NOT NULL
     )
   `);
+
+  // Alter tables safely
+  try {
+    await queryRun(`
+      ALTER TABLE orders ADD COLUMN user_id VARCHAR(50) NULL,
+      ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    `);
+    console.log('Columna user_id y restricción de FK añadidas a la tabla orders.');
+  } catch (error: any) {
+    // Ignorar si la columna ya existe
+    if (!error.message.includes('Duplicate column name') && !error.message.includes('already exists') && !error.message.includes('duplicate key')) {
+      console.warn('Advertencia al alterar la tabla orders:', error.message);
+    }
+  }
 
   await queryRun(`
     CREATE TABLE IF NOT EXISTS order_items (
@@ -88,6 +113,17 @@ export async function initDatabase(): Promise<void> {
       await queryRun('INSERT INTO products (id, name, description, price, stock) VALUES (?, ?, ?, ?, ?)', p);
     }
     console.log('Tablas inicializadas y productos semilla agregados en MySQL.');
+  }
+
+  // Seed default admin user
+  const userRows = await queryAll<{ count: number }>('SELECT COUNT(*) as count FROM users');
+  if (userRows && userRows[0] && userRows[0].count === 0) {
+    const adminPasswordHash = bcrypt.hashSync('adminpassword123', 10);
+    await queryRun(
+      'INSERT INTO users (id, email, password, name, role) VALUES (?, ?, ?, ?, ?)',
+      ['user-admin', 'admin@tecnonova.com', adminPasswordHash, 'Administrador TecnoNova', 'admin']
+    );
+    console.log('Usuario Administrador por defecto creado (admin@tecnonova.com).');
   }
 }
 

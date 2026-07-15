@@ -3,6 +3,17 @@ let products = [];
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
 let orders = [];
 
+// Sobrescribir fetch globalmente para inyectar token JWT si existe en localStorage
+const originalFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+  const token = localStorage.getItem('token');
+  if (token) {
+    options.headers = options.headers || {};
+    options.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return originalFetch(url, options);
+};
+
 // DOM Elements
 const productList = document.getElementById('product-list');
 const ordersList = document.getElementById('orders-list');
@@ -20,6 +31,18 @@ const toast = document.getElementById('toast');
 const navCatalogBtn = document.getElementById('nav-catalog-btn');
 const navOrdersBtn = document.getElementById('nav-orders-btn');
 const navAdminBtn = document.getElementById('nav-admin-btn');
+
+// Elementos de Autenticación
+const authModal = document.getElementById('auth-modal');
+const closeAuthModal = document.getElementById('close-auth-modal');
+const authActionBtn = document.getElementById('auth-action-btn');
+const userDisplayName = document.getElementById('user-display-name');
+const authModalTitle = document.getElementById('auth-modal-title');
+
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const goToRegisterBtn = document.getElementById('go-to-register');
+const goToLoginBtn = document.getElementById('go-to-login');
 
 // Elementos de la Pasarela de Pago
 const paymentModal = document.getElementById('payment-modal');
@@ -308,6 +331,14 @@ function resetCardPreview() {
 async function checkout() {
   if (cart.length === 0) return;
 
+  const token = localStorage.getItem('token');
+  if (!token) {
+    showToast('Inicia sesión para poder realizar tu compra.');
+    toggleCartDrawer(false);
+    toggleAuthModal(true);
+    return;
+  }
+
   checkoutBtn.disabled = true;
   checkoutBtn.innerText = 'Redirigiendo a Stripe... 💳';
 
@@ -435,10 +466,18 @@ function showToast(message) {
 
 // Switch SPA views
 function switchView(viewName) {
+  const token = localStorage.getItem('token');
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
+
+  if (viewName === 'orders' && !token) {
+    showToast('Inicia sesión para poder ver tu historial de compras.');
+    toggleAuthModal(true);
+    switchView('catalog');
+    return;
+  }
   
-  if ((viewName === 'orders' || viewName === 'admin') && !isAdmin) {
-    showToast('Acceso restringido');
+  if (viewName === 'admin' && !isAdmin) {
+    showToast('Acceso restringido al administrador.');
     switchView('catalog');
     return;
   }
@@ -471,6 +510,7 @@ closeCart.addEventListener('click', () => toggleCartDrawer(false));
 drawerOverlay.addEventListener('click', () => {
   toggleCartDrawer(false);
   togglePaymentModal(false);
+  toggleAuthModal(false);
 });
 checkoutBtn.addEventListener('click', checkout);
 closePayment.addEventListener('click', () => togglePaymentModal(false));
@@ -621,14 +661,88 @@ window.increaseCartQty = increaseCartQty;
 window.deleteProduct = deleteProduct;
 window.removeFromCart = removeFromCart;
 
-// Admin Access Checker
+// Controlar Modal de Autenticación
+function toggleAuthModal(open) {
+  if (open) {
+    authModal.classList.add('open');
+    drawerOverlay.classList.add('open');
+  } else {
+    authModal.classList.remove('open');
+    drawerOverlay.classList.remove('open');
+    loginForm.reset();
+    registerForm.reset();
+    showLoginForm();
+  }
+}
+
+function showLoginForm() {
+  authModalTitle.innerText = 'Iniciar Sesión';
+  loginForm.style.display = 'block';
+  registerForm.style.display = 'none';
+}
+
+function showRegisterForm() {
+  authModalTitle.innerText = 'Crear Cuenta';
+  loginForm.style.display = 'none';
+  registerForm.style.display = 'block';
+}
+
+// Iniciar Sesión / Cerrar Sesión Acción del Botón del Header
+function handleAuthAction() {
+  const token = localStorage.getItem('token');
+  if (token) {
+    // Cerrar sesión
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('isAdmin');
+    showToast('Sesión cerrada correctamente');
+    switchView('catalog');
+    checkAuthStatus();
+  } else {
+    // Abrir Modal de Inicio de Sesión
+    toggleAuthModal(true);
+  }
+}
+
+// Verificar el Estado de Autenticación
+function checkAuthStatus() {
+  const token = localStorage.getItem('token');
+  const userStr = localStorage.getItem('user');
+
+  if (token && userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      userDisplayName.innerText = `Hola, ${user.name}`;
+      userDisplayName.style.display = 'inline';
+      authActionBtn.innerText = 'Cerrar Sesión';
+
+      // Si el rol es admin, habilitar siempre botones del panel
+      if (user.role === 'admin') {
+        localStorage.setItem('isAdmin', 'true');
+        navOrdersBtn.style.display = 'inline-block';
+        navAdminBtn.style.display = 'inline-block';
+      } else {
+        checkAdminAccess();
+      }
+    } catch (e) {
+      console.error(e);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
+  } else {
+    userDisplayName.style.display = 'none';
+    authActionBtn.innerText = 'Iniciar Sesión';
+    checkAdminAccess();
+  }
+}
+
+// Admin Access Checker (Acceso oculto por parámetro de URL)
 function checkAdminAccess() {
   const params = new URLSearchParams(window.location.search);
   const adminParam = params.get('admin');
 
   if (adminParam === 'tecnonova-admin') {
     localStorage.setItem('isAdmin', 'true');
-    // Limpiar el parámetro de la barra de direcciones por seguridad
     const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
     window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
   } else if (adminParam === 'logout') {
@@ -638,7 +752,10 @@ function checkAdminAccess() {
   }
 
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
-  if (isAdmin) {
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  if (isAdmin || (user && user.role === 'admin')) {
     navOrdersBtn.style.display = 'inline-block';
     navAdminBtn.style.display = 'inline-block';
   } else {
@@ -647,6 +764,76 @@ function checkAdminAccess() {
   }
 }
 
+// Handlers para los formularios de login y registro
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error al iniciar sesión');
+    }
+
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    
+    showToast(`¡Bienvenido de nuevo, ${data.user.name}!`);
+    toggleAuthModal(false);
+    checkAuthStatus();
+  } catch (err) {
+    showToast(err.message || 'Error de autenticación');
+    console.error(err);
+  }
+}
+
+async function handleRegisterSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('register-name').value.trim();
+  const email = document.getElementById('register-email').value.trim();
+  const password = document.getElementById('register-password').value;
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Error en el registro');
+    }
+
+    showToast('¡Registro exitoso! Ya puedes iniciar sesión.');
+    showLoginForm();
+  } catch (err) {
+    showToast(err.message || 'Error al registrarse');
+    console.error(err);
+  }
+}
+
+// Event Listeners de Autenticación
+authActionBtn.addEventListener('click', handleAuthAction);
+closeAuthModal.addEventListener('click', () => toggleAuthModal(false));
+goToRegisterBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  showRegisterForm();
+});
+goToLoginBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  showLoginForm();
+});
+loginForm.addEventListener('submit', handleLoginSubmit);
+registerForm.addEventListener('submit', handleRegisterSubmit);
+
 // Init
-checkAdminAccess();
+checkAuthStatus();
 fetchCatalog();

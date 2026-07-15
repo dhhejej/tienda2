@@ -7,6 +7,7 @@ interface MysqlOrderRow {
   total: string;
   status: 'PENDING' | 'PAID' | 'SHIPPED' | 'CANCELLED';
   created_at: string;
+  user_id: string | null;
 }
 
 interface MysqlOrderItemRow {
@@ -32,7 +33,7 @@ export class MysqlOrderRepository implements OrderRepository {
         price: Number(i.price),
         quantity: i.quantity
       }));
-      orders.push(new Order(r.id, items, Number(r.total), r.status, new Date(r.created_at)));
+      orders.push(new Order(r.id, items, Number(r.total), r.status, new Date(r.created_at), r.user_id));
     }
 
     return orders;
@@ -53,18 +54,43 @@ export class MysqlOrderRepository implements OrderRepository {
       quantity: i.quantity
     }));
 
-    return new Order(r.id, items, Number(r.total), r.status, new Date(r.created_at));
+    return new Order(r.id, items, Number(r.total), r.status, new Date(r.created_at), r.user_id);
+  }
+
+  public async findByUserId(userId: string): Promise<Order[]> {
+    const orderRows = await queryAll<MysqlOrderRow>(
+      'SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    const orders: Order[] = [];
+
+    for (const r of orderRows) {
+      const itemRows = await queryAll<MysqlOrderItemRow>(
+        'SELECT product_id, name, price, quantity FROM order_items WHERE order_id = ?',
+        [r.id]
+      );
+      const items: OrderItem[] = itemRows.map(i => ({
+        productId: i.product_id,
+        productName: i.name,
+        price: Number(i.price),
+        quantity: i.quantity
+      }));
+      orders.push(new Order(r.id, items, Number(r.total), r.status, new Date(r.created_at), r.user_id));
+    }
+
+    return orders;
   }
 
   public async save(order: Order): Promise<void> {
     await queryRun(
-      `INSERT INTO orders (id, total, status, created_at) 
-       VALUES (?, ?, ?, ?) 
+      `INSERT INTO orders (id, total, status, created_at, user_id) 
+       VALUES (?, ?, ?, ?, ?) 
        ON DUPLICATE KEY UPDATE 
          total = VALUES(total), 
          status = VALUES(status), 
-         created_at = VALUES(created_at)`,
-      [order.id, order.total, order.status, order.createdAt.toISOString()]
+         created_at = VALUES(created_at),
+         user_id = VALUES(user_id)`,
+      [order.id, order.total, order.status, order.createdAt.toISOString(), order.userId]
     );
 
     await queryRun('DELETE FROM order_items WHERE order_id = ?', [order.id]);

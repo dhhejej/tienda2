@@ -13,6 +13,12 @@ export class InMemoryOrderRepository implements OrderRepository {
     return order ? this.cloneOrder(order) : null;
   }
 
+  public async findByUserId(userId: string): Promise<Order[]> {
+    return Array.from(this.orders.values())
+      .filter(o => o.userId === userId)
+      .map(o => this.cloneOrder(o));
+  }
+
   public async save(order: Order): Promise<void> {
     this.orders.set(order.id, this.cloneOrder(order));
   }
@@ -23,7 +29,8 @@ export class InMemoryOrderRepository implements OrderRepository {
       [...order.items],
       order.total,
       order.status,
-      order.createdAt
+      order.createdAt,
+      order.userId
     );
   }
 }
