@@ -32,6 +32,12 @@ app.use('/api/orders', createOrderRouter(orderRepository, productRepository));
 app.use('/api/payments', createPaymentRouter(productRepository, orderRepository));
 app.use('/api/auth', createAuthRouter(userRepository));
 
+app.get('/api/config', (req, res) => {
+  res.json({
+    defaultStoreId: process.env.DEFAULT_STORE_ID || 'tienda1'
+  });
+});
+
 
 async function startServer() {
   try {

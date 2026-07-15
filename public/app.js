@@ -3,20 +3,7 @@ let products = [];
 let cart = JSON.parse(localStorage.getItem('cart')) || [];
 let orders = [];
 
-// Obtener el ID de la tienda desde el parámetro query (?store=tienda1 o ?store=tienda2)
-const storeId = new URLSearchParams(window.location.search).get('store') || localStorage.getItem('storeId') || 'tienda1';
-localStorage.setItem('storeId', storeId);
-
-// Personalizar interfaz según la tienda
-document.addEventListener('DOMContentLoaded', () => {
-  if (storeId === 'tienda2') {
-    document.title = "TecnoNova Accesorios - Tienda 2";
-    const logoText = document.querySelector('.logo .gradient-text');
-    if (logoText) logoText.textContent = "TecnoNova Accesorios";
-    const authTitle = document.querySelector('#auth-view h2');
-    if (authTitle) authTitle.textContent = "Ingresa a TecnoNova Accesorios";
-  }
-});
+let storeId = 'tienda1'; // Valor por defecto inicial
 
 // Sobrescribir fetch globalmente para inyectar token JWT y el ID de tienda si existen
 const originalFetch = window.fetch;
@@ -29,6 +16,54 @@ window.fetch = function(url, options = {}) {
   options.headers['x-store-id'] = storeId;
   return originalFetch(url, options);
 };
+
+// Cargar la configuración de la tienda e inicializar marca
+async function initStoreConfig() {
+  // 1. Prioridad 1: Parámetro en la URL (?store=tienda2)
+  const urlParams = new URLSearchParams(window.location.search);
+  let detectedStore = urlParams.get('store');
+
+  // 2. Prioridad 2: Detección por nombre de host (si contiene 'tienda2' o 'gamervault2')
+  if (!detectedStore) {
+    if (window.location.hostname.includes('tienda2') || window.location.hostname.includes('gamervault2')) {
+      detectedStore = 'tienda2';
+    } else if (window.location.hostname.includes('tienda1') || window.location.hostname.includes('gamervault1')) {
+      detectedStore = 'tienda1';
+    }
+  }
+
+  // 3. Prioridad 3: Consultar al backend cuál es su tienda predeterminada
+  if (!detectedStore) {
+    try {
+      const res = await originalFetch('/api/config');
+      if (res.ok) {
+        const config = await res.json();
+        detectedStore = config.defaultStoreId;
+      }
+    } catch (e) {
+      console.warn('No se pudo conectar al endpoint de configuración, usando caché o tienda1.');
+    }
+  }
+
+  // 4. Prioridad 4: Caída a caché o valor por defecto
+  storeId = detectedStore || localStorage.getItem('storeId') || 'tienda1';
+  localStorage.setItem('storeId', storeId);
+
+  // Personalizar marca de interfaz de usuario
+  if (storeId === 'tienda2') {
+    document.title = "TecnoNova Accesorios - Tienda 2";
+    const logoText = document.querySelector('.logo .gradient-text');
+    if (logoText) logoText.textContent = "TecnoNova Accesorios";
+    const authTitle = document.querySelector('#auth-view h2');
+    if (authTitle) authTitle.textContent = "Ingresa a TecnoNova Accesorios";
+  } else {
+    document.title = "TecnoNova - Tienda Premium de Hardware";
+    const logoText = document.querySelector('.logo .gradient-text');
+    if (logoText) logoText.textContent = "TecnoNova";
+    const authTitle = document.querySelector('#auth-view h2');
+    if (authTitle) authTitle.textContent = "Ingresa a TecnoNova";
+  }
+}
 
 // DOM Elements
 const productList = document.getElementById('product-list');
@@ -1020,5 +1055,9 @@ function renderUserOrders(orders) {
 window.showUserOrders = showUserOrders;
 
 // Init
-checkAuthStatus();
-fetchCatalog();
+async function initApp() {
+  await initStoreConfig();
+  checkAuthStatus();
+  fetchCatalog();
+}
+initApp();
