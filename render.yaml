@@ -3,7 +3,7 @@ services:
     name: storefront-api
     env: node
     plan: free
-    buildCommand: npm run build
+    buildCommand: npm install && npm run build
     startCommand: node dist/infrastructure/web/server.js
     envVars:
       - key: PORT
